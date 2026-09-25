@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=600, height=600, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>VSight - Visual Memory HUD</title>
+  <style>
+    /* Additive Optical Display Reset: Pure black renders fully transparent */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      width: 600px;
+      height: 600px;
+      background-color: #000000;
+      color: #ffffff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 24px;
+    }
+
+    /* Top Bar Header */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 2px solid #00E5FF;
+      padding-bottom: 12px;
+    }
+
+    .brand {
+      font-size: 24px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      color: #00E5FF;
+      text-shadow: 0 0 8px rgba(0, 229, 255, 0.6);
+    }
+
+    .status-badge {
+      font-size: 16px;
+      color: #00FF66;
+      background: rgba(0, 255, 102, 0.1);
+      padding: 4px 10px;
+      border-radius: 4px;
+      border: 1px solid #00FF66;
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      margin: 16px 0;
+      position: relative;
+    }
+
+    /* Screen Views */
+    .view {
+      display: none;
+      flex-direction: column;
+      height: 100%;
+      justify-content: space-between;
+    }
+
+    .view.active {
+      display: flex;
+    }
+
+    /* Interactive Memory Items */
+    .memory-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .memory-card {
+      min-height: 88px; /* Platform requirement: 88px interactive height */
+      background: #080808;
+      border: 2px solid #222222;
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      transition: all 0.15s ease-in-out;
+      cursor: pointer;
+    }
+
+    .memory-card.focused {
+      border-color: #00E5FF;
+      background: #001A24;
+      box-shadow: 0 0 12px rgba(0, 229, 255, 0.5);
+      transform: scale(1.02);
+    }
+
+    .card-category {
+      font-size: 14px;
+      color: #00E5FF;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+
+    .card-title {
+      font-size: 22px;
+      font-weight: 600;
+      color: #FFFFFF;
+    }
+
+    .card-meta {
+      font-size: 14px;
+      color: #888888;
+      margin-top: 4px;
+    }
+
+    /* Memory Detail Overlay View */
+    .detail-box {
+      border: 2px solid #00E5FF;
+      border-radius: 8px;
+      padding: 20px;
+      background: #020D14;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .detail-title {
+      font-size: 26px;
+      color: #00E5FF;
+      margin-bottom: 8px;
+    }
+
+    .detail-body {
+      font-size: 20px;
+      line-height: 1.4;
+      color: #E0E0E0;
+    }
+
+    /* Quick Action Button Prompt */
+    .action-btn {
+      min-height: 88px;
+      background: #00E5FF;
+      color: #000000;
+      font-size: 22px;
+      font-weight: bold;
+      border: none;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+
+    .action-btn.focused {
+      box-shadow: 0 0 16px #00E5FF;
+      outline: 4px solid #FFFFFF;
+    }
+
+    /* Footer Guidance HUD */
+    footer {
+      border-top: 1px solid #333333;
+      padding-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      font-size: 16px;
+      color: #AAAAAA;
+    }
+
+    .key-hint {
+      color: #00E5FF;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Bar -->
+  <header>
+    <div class="brand">VSIGHT</div>
+    <div class="status-badge" id="statusBadge">READY</div>
+  </header>
+
+  <!-- Main View Area -->
+  <main>
+    <!-- VIEW 1: Memory Stream List -->
+    <div id="listView" class="view active">
+      <div class="memory-list" id="memoryList">
+        <!-- Dynamic focusable memory cards inserted here -->
+      </div>
+    </div>
+
+    <!-- VIEW 2: Detail HUD View -->
+    <div id="detailView" class="view">
+      <div class="detail-box">
+        <div>
+          <div class="card-category" id="detailCat">Category</div>
+          <div class="detail-title" id="detailTitle">Memory Title</div>
+          <div class="detail-body" id="detailBody">Memory Details...</div>
+        </div>
+        <div id="backBtn" class="action-btn focused" tabindex="0">[ ENTER ] BACK TO LIST</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Navigation Bar Footer -->
+  <footer>
+    <div><span class="key-hint">▲/▼</span> Navigate</div>
+    <div><span class="key-hint">[ ENTER ]</span> Select</div>
+  </footer>
+
+  <script>
+    // Initial Memory State (Stored in LocalStorage)
+    const defaultMemories = [
+      { id: 1, category: "PARKING", title: "Car Location", detail: "Level 2B - Slot #142 near Elevator B", time: "10 mins ago" },
+      { id: 2, category: "OBJECT", title: "Home Office Keys", detail: "Placed on top of the living room bookshelf", time: "2 hrs ago" },
+      { id: 3, category: "PIN CODE", title: "Storage Lock", detail: "Code: 8-2-4-9", time: "Yesterday" }
+    ];
+
+    let memories = JSON.parse(localStorage.getItem('vsight_memories')) || defaultMemories;
+    let currentFocusIndex = 0;
+    let currentView = 'list'; // 'list' or 'detail'
+
+    const memoryListEl = document.getElementById('memoryList');
+    const listViewEl = document.getElementById('listView');
+    const detailViewEl = document.getElementById('detailView');
+    const statusBadge = document.getElementById('statusBadge');
+    const backBtn = document.getElementById('backBtn');
+
+    // Render Cards in List View
+    function renderMemories() {
+      memoryListEl.innerHTML = '';
+      memories.forEach((mem, index) => {
+        const card = document.createElement('div');
+        card.className = `memory-card ${index === currentFocusIndex && currentView === 'list' ? 'focused' : ''}`;
+        card.setAttribute('tabindex', '0');
+        card.innerHTML = `
+          <div class="card-category">${mem.category}</div>
+          <div class="card-title">${mem.title}</div>
+          <div class="card-meta">${mem.time}</div>
+        `;
+        
+        // Add click listener for mouse interactions
+        card.addEventListener('click', () => {
+          currentFocusIndex = index;
+          updateFocus();
+          openDetail(index);
+        });
+
+        memoryListEl.appendChild(card);
+      });
+      localStorage.setItem('vsight_memories', JSON.stringify(memories));
+    }
+
+    // Update Focused Card Highlight
+    function updateFocus() {
+      if (currentView === 'list') {
+        const cards = memoryListEl.querySelectorAll('.memory-card');
+        cards.forEach((card, idx) => {
+          if (idx === currentFocusIndex) {
+            card.classList.add('focused');
+            card.focus();
+          } else {
+            card.classList.remove('focused');
+          }
+        });
+      }
+    }
+
+    // View Selected Memory Detail
+    function openDetail(index) {
+      const mem = memories[index];
+      document.getElementById('detailCat').innerText = mem.category;
+      document.getElementById('detailTitle').innerText = mem.title;
+      document.getElementById('detailBody').innerText = mem.detail;
+
+      listViewEl.classList.remove('active');
+      detailViewEl.classList.add('active');
+      currentView = 'detail';
+      statusBadge.innerText = 'VIEWING';
+      statusBadge.style.borderColor = '#00E5FF';
+      statusBadge.style.color = '#00E5FF';
+      backBtn.focus();
+    }
+
+    // Return to List View
+    function closeDetail() {
+      detailViewEl.classList.remove('active');
+      listViewEl.classList.add('active');
+      currentView = 'list';
+      statusBadge.innerText = 'READY';
+      statusBadge.style.borderColor = '#00FF66';
+      statusBadge.style.color = '#00FF66';
+      updateFocus();
+    }
+
+    // Click handler for back button
+    backBtn.addEventListener('click', closeDetail);
+
+    // Keyboard Event Handling
+    document.addEventListener('keydown', (e) => {
+      if (currentView === 'list') {
+        if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          if (currentFocusIndex < memories.length - 1) {
+            currentFocusIndex++;
+            updateFocus();
+          }
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          if (currentFocusIndex > 0) {
+            currentFocusIndex--;
+            updateFocus();
+          }
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          openDetail(currentFocusIndex);
+        }
+      } else if (currentView === 'detail') {
+        if (e.key === 'Enter' || e.key === 'Escape' || e.key === 'ArrowLeft') {
+          e.preventDefault();
+          closeDetail();
+        }
+      }
+    });
+
+    // Initial Setup
+    renderMemories();
+    updateFocus();
+  </script>
+</body>
+</html>
